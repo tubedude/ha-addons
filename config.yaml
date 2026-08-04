@@ -10,6 +10,10 @@ arch:
 auth_api: true
 discovery:
   - mqtt
+# Imagem pre-construida: sem esta linha o Supervisor compila localmente, e o
+# Dockerfile compila libwebsockets + mosquitto do zero (~6 min numa maquina
+# rapida, bem mais no HA). Build feito fora, ver build-and-push.sh.
+image: tubedude/mosquitto-ts-{arch}
 map:
   - ssl
   - share

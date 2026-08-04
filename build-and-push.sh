@@ -12,7 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-REGISTRY="${1:?usage: $0 <registry-prefix> [--no-push]   e.g. ghcr.io/rtrevisan}"
+# Registry prefix, e.g. "rtrevisan" for Docker Hub or "ghcr.io/rtrevisan".
+# A bare name (no dots, no slash) is treated as a Docker Hub user.
+REGISTRY="${1:?usage: $0 <registry-prefix> [--no-push]   e.g. rtrevisan  or  ghcr.io/rtrevisan}"
 NO_PUSH="${2:-}"
 
 # Match the values the Supervisor would pass, read straight from build.yaml so
@@ -54,15 +56,19 @@ docker push "${IMAGE}:latest"
 
 cat <<EOF
 
-==> pushed.
+==> pushed ${IMAGE}:${VERSION}
 
-Now add this line to config.yaml so the Supervisor pulls instead of building:
+Add this to config.yaml so the Supervisor pulls instead of building:
 
   image: ${REGISTRY}/mosquitto-ts-{arch}
 
-The {arch} placeholder is expanded by the Supervisor. If you only ever build
-amd64, that is the only tag that needs to exist.
+{arch} is expanded by the Supervisor. Building only amd64 means that is the
+only tag that needs to exist.
 
-Note: on ghcr.io a newly pushed package is PRIVATE. Make it public, or the
-Supervisor cannot pull it.
+The repository must be PUBLIC — the Supervisor pulls anonymously. On Docker Hub
+new repositories default to public; on ghcr.io they default to private.
+
+After changing config.yaml, sync it to the HA box and reload:
+  scp config.yaml root@<ha>:/addons/mosquitto-ts/
+  ssh root@<ha> 'ha addons reload'
 EOF
