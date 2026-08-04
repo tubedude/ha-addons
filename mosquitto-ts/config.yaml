@@ -2,7 +2,7 @@
 version: 7.1.0
 slug: mosquitto-ts
 name: Mosquitto broker + Tailscale
-description: Mosquitto com Tailscale embutido — expoe o MQTT por Funnel para clientes que nao podem rodar VPN
+description: Mosquitto with Tailscale built in — publishes MQTT over Funnel for clients that cannot run a VPN
 url: https://github.com/home-assistant/addons/tree/master/mosquitto
 arch:
   - aarch64
@@ -10,9 +10,11 @@ arch:
 auth_api: true
 discovery:
   - mqtt
-# Imagem pre-construida: sem esta linha o Supervisor compila localmente, e o
-# Dockerfile compila libwebsockets + mosquitto do zero (~6 min numa maquina
-# rapida, bem mais no HA). Build feito fora, ver build-and-push.sh.
+# Pre-built image. Without this line the Supervisor builds locally, and the
+# Dockerfile compiles libwebsockets + mosquitto from source (~6 min on a fast
+# machine, considerably worse on an HA box). See build-and-push.sh.
+# Note: only honoured for add-ons installed from a git repository — a local
+# add-on dropped in /addons is always built from source.
 image: tubedude/mosquitto-ts-{arch}
 map:
   - ssl

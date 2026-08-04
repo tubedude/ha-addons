@@ -1,5 +1,5 @@
 #!/usr/bin/execlineb -S1
-# Se o tailscaled morrer, NAO derruba o add-on: o mosquitto local continua
-# servindo a LAN. Perder o acesso remoto e melhor que perder o broker inteiro.
+# If tailscaled dies, do NOT take the add-on down: local mosquitto keeps
+# serving the LAN. Losing remote access beats losing the broker entirely.
 foreground { redirfd -w 1 /dev/null echo "tailscaled saiu (${1})" }
 exit 0

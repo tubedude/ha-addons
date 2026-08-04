@@ -89,14 +89,13 @@ RUN apt-get update \
 	/root/go
 
 # --- Tailscale ------------------------------------------------------------
-# Motivo do fork: dar ao broker identidade propria no tailnet e um Funnel
-# dedicado, para que o carro (que NAO pode rodar Tailscale — o ROM do head
-# unit Geely nao tem com.android.vpndialogs) alcance o MQTT de qualquer rede,
-# com a rede de casa atras de CGNAT.
+# Why this fork: give the broker its own tailnet identity and a dedicated
+# Funnel, so a client that CANNOT run Tailscale reaches MQTT from any network,
+# with the home network behind CGNAT.
 #
-# Com o Funnel em modo TCP, o TLS termina no PROPRIO mosquitto (listener 8884),
-# entao require_certificate volta a funcionar de ponta a ponta — o que nao
-# acontece quando o Funnel faz proxy HTTP e termina o TLS na borda.
+# With Funnel in TCP mode, TLS terminates at mosquitto ITSELF (listener 8884),
+# so require_certificate works end to end — which is not the case when Funnel
+# proxies HTTP and terminates TLS at the edge.
 ARG TAILSCALE_VERSION
 RUN apt-get update \
     && apt-get install -qy --no-install-recommends curl ca-certificates \
@@ -104,7 +103,7 @@ RUN apt-get update \
     && case "${ARCH}" in \
          amd64)   TS_ARCH="amd64" ;; \
          arm64)   TS_ARCH="arm64" ;; \
-         *)       echo "arch nao suportada: ${ARCH}" && exit 1 ;; \
+         *)       echo "unsupported arch: ${ARCH}" && exit 1 ;; \
        esac \
     && curl -fsSL -o /tmp/ts.tgz \
        "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TS_ARCH}.tgz" \
