@@ -1,0 +1,62 @@
+---
+version: 7.1.0
+slug: mosquitto-ts
+name: Mosquitto broker + Tailscale
+description: Mosquitto com Tailscale embutido — expoe o MQTT por Funnel para clientes que nao podem rodar VPN
+url: https://github.com/home-assistant/addons/tree/master/mosquitto
+arch:
+  - aarch64
+  - amd64
+auth_api: true
+discovery:
+  - mqtt
+# Imagem pre-construida: sem esta linha o Supervisor compila localmente, e o
+# Dockerfile compila libwebsockets + mosquitto do zero (~6 min numa maquina
+# rapida, bem mais no HA). Build feito fora, ver build-and-push.sh.
+image: tubedude/mosquitto-ts-{arch}
+map:
+  - ssl
+  - share
+options:
+  logins: []
+  log_dest: []
+  log_type: []
+  require_certificate: false
+  certfile: fullchain.pem
+  keyfile: privkey.pem
+  customize:
+    active: false
+    folder: mosquitto
+  tailscale_authkey: ""
+  tailscale_hostname: mosquitto
+  tailscale_funnel_port: "8443"
+ports:
+  1883/tcp: 1883
+  1884/tcp: 1884
+  8883/tcp: 8883
+  8884/tcp: 8884
+schema:
+  logins:
+    - username: str
+      password: password
+      password_pre_hashed: "bool?"
+  log_dest:
+    - list(none|stdout|stderr|topic)?
+  log_type:
+    - list(none|debug|error|warning|notice|information|subscribe|unsubscribe|websockets|all)?
+  require_certificate: bool
+  certfile: str
+  cafile: str?
+  keyfile: str
+  customize:
+    active: bool
+    folder: str
+  tailscale_authkey: password?
+  tailscale_hostname: str?
+  tailscale_funnel_port: list(443|8443|10000)?
+  debug: bool?
+services:
+  - mqtt:provide
+startup: system
+watchdog: tcp://[HOST]:1883
+init: false

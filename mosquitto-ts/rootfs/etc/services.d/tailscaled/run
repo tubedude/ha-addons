@@ -1,0 +1,64 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Sobe o tailscaled e publica o listener TLS do mosquitto via Funnel.
+#
+# Por que TCP e nao HTTP: com `funnel --tcp` o TLS termina AQUI, no listener
+# 8884 do proprio mosquitto — entao require_certificate volta a valer de ponta
+# a ponta. Se o Funnel fizesse proxy HTTP, o TLS terminaria na borda do
+# Tailscale e o broker nunca veria o certificado do cliente.
+# ==============================================================================
+
+if ! bashio::config.has_value 'tailscale_authkey'; then
+    bashio::log.info "tailscale_authkey nao configurado — Tailscale desativado"
+    # nao derruba o add-on: o mosquitto local segue funcionando
+    exec sleep infinity
+fi
+
+mkdir -p /data/tailscale /dev/net
+if [ ! -c /dev/net/tun ]; then
+    mknod /dev/net/tun c 10 200 || bashio::log.warning "sem /dev/net/tun — usando userspace"
+fi
+
+bashio::log.info "Iniciando tailscaled..."
+# userspace-networking dispensa NET_ADMIN, que o add-on nao tem
+tailscaled \
+    --state=/data/tailscale/tailscaled.state \
+    --socket=/var/run/tailscale/tailscaled.sock \
+    --tun=userspace-networking &
+TSD_PID=$!
+
+# espera o socket aparecer antes de falar com o daemon
+for _ in $(seq 1 30); do
+    [ -S /var/run/tailscale/tailscaled.sock ] && break
+    sleep 1
+done
+
+HOSTNAME=$(bashio::config 'tailscale_hostname' 'mosquitto')
+bashio::log.info "Autenticando como '${HOSTNAME}'..."
+tailscale --socket=/var/run/tailscale/tailscaled.sock up \
+    --authkey="$(bashio::config 'tailscale_authkey')" \
+    --hostname="${HOSTNAME}" \
+    --accept-dns=false \
+    || bashio::log.error "tailscale up falhou"
+
+# Espera o mosquitto atender no 8884 (TLS) antes de publicar o Funnel —
+# publicar apontando para uma porta morta deixa o endpoint quebrado.
+PORT=$(bashio::config 'tailscale_funnel_port' '8443')
+for _ in $(seq 1 60); do
+    (echo > /dev/tcp/127.0.0.1/8884) >/dev/null 2>&1 && break
+    sleep 1
+done
+
+if (echo > /dev/tcp/127.0.0.1/8884) >/dev/null 2>&1; then
+    bashio::log.info "Publicando Funnel TCP :${PORT} -> mosquitto 8884 (wss)"
+    tailscale --socket=/var/run/tailscale/tailscaled.sock \
+        funnel --bg --tcp="${PORT}" tcp://127.0.0.1:8884 \
+        || bashio::log.error "funnel falhou — o Funnel exige TLS no add-on (certfile/keyfile) e o node attr 'funnel' no tailnet"
+    tailscale --socket=/var/run/tailscale/tailscaled.sock funnel status || true
+else
+    bashio::log.error "listener TLS 8884 nao subiu — sem certificado nao ha o que publicar"
+fi
+
+wait "${TSD_PID}"
