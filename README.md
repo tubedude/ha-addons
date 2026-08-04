@@ -1,108 +1,129 @@
 # Mosquitto broker + Tailscale
 
-Fork do add-on oficial [`mosquitto`](https://github.com/home-assistant/addons/tree/master/mosquitto)
-do Home Assistant, com Tailscale embutido.
+A fork of the official Home Assistant [`mosquitto`](https://github.com/home-assistant/addons/tree/master/mosquitto)
+add-on with Tailscale built in, so the broker can publish itself over Tailscale
+Funnel.
 
-## Por que este fork existe
+## Why this fork exists
 
-O objetivo é um só: **um cliente que não pode rodar Tailscale precisa alcançar o
-broker MQTT de fora da rede de casa.**
+One goal: **let a client that cannot run Tailscale reach the MQTT broker from
+outside the home network.**
 
-No caso concreto, esse cliente é a central multimídia de um Geely (Android
-Automotive). Ela não roda cliente VPN nenhum — o ROM não inclui
-`com.android.vpndialogs`, então qualquer app de VPN morre com
-`ActivityNotFoundException` no instante em que pede permissão. E a rede de casa
-está atrás de CGNAT, então não há porta a abrir para um proxy reverso comum
-(NGINX + Let's Encrypt não recebem conexão de fora).
+The concrete client is a Geely head unit (Android Automotive). It cannot run any
+VPN client — the ROM ships without `com.android.vpndialogs`, so every VPN app
+dies with `ActivityNotFoundException` the moment it requests permission. And the
+home network is behind CGNAT, so there is no port to forward for a conventional
+reverse proxy (NGINX + Let's Encrypt never receive the inbound connection).
 
-O Tailscale **Funnel** resolve os dois problemas ao mesmo tempo: é um túnel de
-*saída* (fura o CGNAT) e o cliente do outro lado não precisa de Tailscale — fala
-TLS comum com um endereço público.
+Tailscale **Funnel** solves both at once: it is an *outbound* tunnel, so CGNAT
+is irrelevant, and the far side needs no Tailscale at all — it speaks ordinary
+TLS to a public hostname.
 
-### Por que dentro do add-on, e não em outra máquina
+### Why inside the add-on rather than on another machine
 
-Funciona publicar o Funnel de qualquer nó do tailnet que enxergue o broker. Mas
-isso torna esse nó infraestrutura: se ele desligar, o acesso remoto cai. Um PC
-que se desliga não é bom lugar para isso. Aqui o Funnel vive junto do próprio
-broker, no mesmo container, e sobe com ele.
+Publishing the Funnel from any tailnet node that can see the broker works — we
+tested it from a WSL box. But that turns the node into infrastructure: if it
+sleeps, remote access dies. A desktop that gets switched off is a poor place for
+that. Here the Funnel lives next to the broker and starts with it.
 
-### Por que Funnel em modo TCP
+### Why Funnel in TCP mode
 
-Esta é a razão técnica que motivou o fork em vez de uma solução externa.
+This is the technical reason a fork was warranted rather than an external proxy.
 
-Com `tailscale funnel` em modo HTTP, o **TLS termina na borda do Tailscale** e o
-backend recebe HTTP puro. O broker nunca vê o certificado do cliente, então
-`require_certificate` não tem efeito — a autenticação fica restrita a
-usuário/senha, numa porta exposta à internet.
+With `tailscale funnel` in HTTP mode, **TLS terminates at Tailscale's edge** and
+the backend receives plain HTTP. The broker never sees the client certificate,
+so `require_certificate` has no effect — authentication collapses to
+username/password on an internet-facing port.
 
-Com `funnel --tcp`, o TLS termina **no listener 8884 do próprio mosquitto**.
-O broker enxerga o certificado do cliente e `require_certificate: true` volta a
-valer de ponta a ponta.
+With `funnel --tcp`, TLS terminates at **mosquitto's own listener on 8884**. The
+broker sees the client certificate and `require_certificate: true` works
+end to end.
 
-## O que muda em relação ao upstream
+(Note the distinction from `--tls-terminated-tcp`, which would put us back in
+the first case.)
 
-Três arquivos, nada mais:
+## What differs from upstream
 
-| arquivo | mudança |
+Three files, nothing else:
+
+| file | change |
 |---|---|
-| `Dockerfile` | instala `tailscale`/`tailscaled` **depois** do purge do build |
-| `config.yaml` | `slug` próprio, remove `image:` (compila local), 3 opções novas |
-| `rootfs/etc/services.d/tailscaled/` | serviço s6 que sobe o daemon e publica o Funnel |
+| `Dockerfile` | installs `tailscale`/`tailscaled` **after** the build purge |
+| `config.yaml` | own slug, drops `image:` for local builds, three new options |
+| `rootfs/etc/services.d/tailscaled/` | s6 service that starts the daemon and publishes the Funnel |
 
-O `mosquitto.gtpl` **não foi tocado** — o upstream já gera
-`listener 8884 / protocol websockets` com `require_certificate`. A capacidade
-sempre esteve lá; faltava o túnel.
+`mosquitto.gtpl` is deliberately **untouched** — upstream already emits
+`listener 8884 / protocol websockets` with `require_certificate`. The capability
+was always there; only the tunnel was missing. Keeping the template pristine
+means upstream updates never conflict.
 
-Manter o fork em dia é reaplicar essas três mudanças. O add-on upstream muda
-pouco (meses entre releases).
+Keeping the fork current means re-applying those three changes. Upstream moves
+slowly (months between releases). See `UPSTREAM.md`.
 
-## Opções
+## Options
 
 ```yaml
-tailscale_authkey: tskey-auth-...    # gerada no admin console (reusable)
-tailscale_hostname: mosquitto        # nome no tailnet
-tailscale_funnel_port: 8443          # só 443, 8443 ou 10000 são aceitas
+tailscale_authkey: tskey-auth-...    # generate in the admin console (reusable)
+tailscale_hostname: mosquitto        # name on the tailnet
+tailscale_funnel_port: "8443"        # only 443, 8443 and 10000 are allowed
 ```
 
-Sem `tailscale_authkey`, o Tailscale fica desativado e o add-on se comporta
-exatamente como o oficial.
+With no `tailscale_authkey` the Tailscale side stays off and the add-on behaves
+exactly like the official one.
 
-## Pré-requisitos no tailnet
+## Tailnet prerequisites
 
-1. **HTTPS habilitado** no admin console (DNS → HTTPS Certificates)
-2. **Atributo `funnel`** na policy do tailnet:
+1. **HTTPS certificates enabled** in the admin console (DNS → HTTPS Certificates)
+2. **The `funnel` node attribute** in the tailnet policy:
    ```json
    "nodeAttrs": [
      { "target": ["autogroup:member"], "attr": ["funnel"] }
    ]
    ```
-3. **Certificado presente** em `/ssl` (`certfile`/`keyfile`) — sem ele o
-   listener 8884 não sobe e não há o que publicar
+3. **A certificate in `/ssl`** (`certfile`/`keyfile`). Without it the 8884
+   listener never starts and there is nothing to publish.
 
-## Endereço resultante
+## Resulting endpoint
 
 ```
 wss://<tailscale_hostname>.<tailnet>.ts.net:8443/
 ```
 
-No app cliente, use esse endereço como fallback do endereço da LAN. O cliente
-MQTT (Paho, por exemplo) aceita uma lista e tenta em ordem: em casa vai pelo
-IP local, fora vai pelo Funnel.
+Use it as a fallback next to the LAN address. An MQTT client that accepts a
+server list (Paho, for instance) will try them in order: the local IP at home,
+the Funnel everywhere else.
 
-## Segurança
+## Building
 
-Isto **expõe o broker à internet pública**. Duas medidas valem a pena:
+The Dockerfile compiles libwebsockets and mosquitto from source, which is slow
+on a typical Home Assistant box. Two ways to avoid that:
 
-- **`require_certificate: true`** — o motivo de todo este fork. Cada cliente
-  precisa de um certificado assinado pela sua CA; senha vazada não basta.
-- **Usuário dedicado com ACL** restrita aos tópicos daquele cliente, para que um
-  comprometimento não dê acesso ao broker inteiro.
+**Build elsewhere and pull** — build on any amd64 machine with Docker, push to a
+registry, and restore the `image:` line in `config.yaml`:
 
-Se você não for usar client certs, a exposição fica protegida só por senha — e
-aí um Funnel HTTP simples, sem fork, teria o mesmo efeito com menos manutenção.
+```yaml
+image: ghcr.io/<user>/mosquitto-ts-{arch}
+```
 
-## Falhas isoladas
+See `build-and-push.sh`. Installing then becomes a download.
 
-Se o `tailscaled` morrer, o add-on **não cai**: o serviço `finish` retorna 0 e o
-mosquitto continua servindo a LAN normalmente. Perder acesso remoto é melhor que
-perder o broker.
+**Build on the HA box** — leave `image:` out and the Supervisor builds locally.
+Simpler, but expect a long first install.
+
+## Security
+
+This exposes the broker to the public internet. Two measures matter:
+
+- **`require_certificate: true`** — the reason this fork exists. Each client
+  needs a certificate signed by your CA; a leaked password is not enough.
+- **A dedicated user with an ACL** scoped to that client's topics, so a
+  compromise does not hand over the whole broker.
+
+If you are not going to use client certificates, a plain HTTP Funnel from any
+node achieves the same reachability with no fork to maintain.
+
+## Failure isolation
+
+If `tailscaled` dies the add-on does **not** go down: the `finish` script exits
+0 and mosquitto keeps serving the LAN. Losing remote access beats losing the
+broker.

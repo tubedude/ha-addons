@@ -1,9 +1,9 @@
 ---
 version: 7.1.0
-slug: mosquitto_ts
+slug: mosquitto-ts
 name: Mosquitto broker + Tailscale
 description: Mosquitto com Tailscale embutido — expoe o MQTT por Funnel para clientes que nao podem rodar VPN
-url: https://github.com/home-assistant/addons/tree/master/mosquitto  # fork
+url: https://github.com/home-assistant/addons/tree/master/mosquitto
 arch:
   - aarch64
   - amd64
@@ -25,7 +25,7 @@ options:
     folder: mosquitto
   tailscale_authkey: ""
   tailscale_hostname: mosquitto
-  tailscale_funnel_port: 8443
+  tailscale_funnel_port: "8443"
 ports:
   1883/tcp: 1883
   1884/tcp: 1884
