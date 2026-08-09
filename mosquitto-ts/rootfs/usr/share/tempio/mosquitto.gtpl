@@ -42,16 +42,27 @@ auth_opt_acl_cache_seconds 300
 auth_opt_acl_jitter_seconds 30
 auth_opt_log_level {{ if .debug }}debug{{ else }}error{{ end }}
 
-# HTTP backend for the authentication plugin
+# Files backend: passwords, and the topic rules that actually bind. Registered
+# for user+acl so that ACL decisions have exactly one owner.
+auth_opt_files_register user,acl
 auth_opt_files_password_path /etc/mosquitto/pw
 auth_opt_files_acl_path /etc/mosquitto/acl
 
-# HTTP backend for the authentication plugin
+# HTTP backend: authentication ONLY.
+#
+# It used to answer /superuser and /acl as well, and that made per-user ACLs
+# impossible. The Supervisor approves the superuser question for every user it
+# authenticates, including the local ones from `logins`; a go-auth superuser
+# skips ACL checks entirely; and under mosquitto's plugin semantics a native
+# acl_file can only widen access, never deny. So every user was unrestricted and
+# the ACL recipe in DOCS.md silently did nothing — the debug log said it plainly:
+#   superuser bobby_car acl authenticated with backend HTTP
+# Registering this backend for `user` alone leaves the files backend to answer
+# the ACL question, which is the only place topic rules can take effect.
+auth_opt_http_register user
 auth_opt_http_host 127.0.0.1
 auth_opt_http_port 80
 auth_opt_http_getuser_uri /authentication
-auth_opt_http_superuser_uri /superuser
-auth_opt_http_aclcheck_uri /acl
 
 {{ if .customize }}
 include_dir /share/{{ .customize_folder }}

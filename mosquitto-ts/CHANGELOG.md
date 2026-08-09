@@ -1,5 +1,38 @@
 # Changelog
 
+## 7.2.0
+
+- Per-user ACLs that actually apply. Add an optional `acl` list to any entry in
+  `logins`, holding mosquitto ACL lines without the leading `topic` keyword:
+
+  ```yaml
+  logins:
+    - username: bobby_car
+      password: ...
+      acl:
+        - readwrite bobby/geely/#
+        - write homeassistant/+/bobby_geely/+/config
+  ```
+
+  A user with no `acl` list keeps unrestricted access, so configurations written
+  before this release are unaffected.
+
+- The HTTP backend is now registered for authentication only
+  (`auth_opt_http_register user`), and `auth_opt_http_superuser_uri` /
+  `auth_opt_http_aclcheck_uri` are gone. **This is what makes the above work.**
+  The Supervisor answers the superuser question affirmatively for every user it
+  authenticates, including local ones from `logins`; a go-auth superuser skips
+  ACL checks entirely; and a native `acl_file` cannot help, because under
+  mosquitto's plugin semantics a file ACL can only widen access, never deny. The
+  upshot was that per-user ACLs silently did nothing — including the `customize`
+  plus `acl_file` recipe still documented upstream in DOCS.md.
+
+- **Breaking:** clients logging in with Home Assistant *account* credentials are
+  authenticated by the HTTP backend but have no entry in the ACL file, so they
+  now have no topic access. Give them an entry under `logins` instead. The
+  internal `homeassistant` and `addons` users are written out with
+  `topic readwrite #` and are unaffected.
+
 ## 7.1.0
 
 - Add `log_dest` and `log_type` configuration options

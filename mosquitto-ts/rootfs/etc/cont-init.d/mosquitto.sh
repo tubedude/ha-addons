@@ -34,14 +34,23 @@ else
 fi
 
 # Set up discovery user
+#
+# These two get "topic readwrite #" written out explicitly now. Until 7.2.0 the
+# ACL file carried bare "user" lines with no rules at all, and it did not matter
+# because the HTTP backend answered /superuser for everyone and no ACL was ever
+# consulted. Now that the files backend owns the ACL question, a user with no
+# rules is a user with no access — and Home Assistant breaks if these two are
+# restricted.
 password=$(pw -p "${discovery_password}")
 echo "homeassistant:${password}" >> "${PW}"
 echo "user homeassistant" >> "${ACL}"
+echo "topic readwrite #" >> "${ACL}"
 
 # Set up service user
 password=$(pw -p "${service_password}")
 echo "addons:${password}" >> "${PW}"
 echo "user addons" >> "${ACL}"
+echo "topic readwrite #" >> "${ACL}"
 
 # Set username and password for the broker
 for login in $(bashio::config 'logins|keys'); do
@@ -60,6 +69,22 @@ for login in $(bashio::config 'logins|keys'); do
   fi
   echo "${username}:${password}" >> "${PW}"
   echo "user ${username}" >> "${ACL}"
+
+  # Topic rules for this user. Leaving `acl` out keeps the user unrestricted,
+  # which is what every configuration written before 7.2.0 expects — adding the
+  # list is what opts a user in to being restricted. Each entry is the part of a
+  # mosquitto ACL line after the "topic" keyword, e.g.
+  #   acl:
+  #     - readwrite bobby/geely/#
+  #     - write homeassistant/+/bobby_geely/+/config
+  if bashio::config.exists "logins[${login}].acl"; then
+    for rule in $(bashio::config "logins[${login}].acl|keys"); do
+      bashio::log.info "  acl: $(bashio::config "logins[${login}].acl[${rule}]")"
+      echo "topic $(bashio::config "logins[${login}].acl[${rule}]")" >> "${ACL}"
+    done
+  else
+    echo "topic readwrite #" >> "${ACL}"
+  fi
 done
 
 keyfile="/ssl/$(bashio::config 'keyfile')"
