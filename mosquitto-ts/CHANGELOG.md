@@ -1,5 +1,21 @@
 # Changelog
 
+## 7.2.1
+
+- Fix 7.2.0 failing to start. Removing `auth_opt_http_superuser_uri` and
+  `auth_opt_http_aclcheck_uri` looked like the natural companion to registering
+  the HTTP backend for `user` only, but go-auth validates that every URI is
+  present when it constructs the backend, before `register` narrows what the
+  backend is asked:
+
+  ```
+  fatal  Backend register error: couldn't initialize http backend with error
+         HTTP backend error: missing remote options:  http_aclcheck_uri.
+  ```
+
+  Both are declared again and neither is consulted — with `register user` the
+  plugin logs `Acl check with backend Files` and asks no superuser question.
+
 ## 7.2.0
 
 - Per-user ACLs that actually apply. Add an optional `acl` list to any entry in

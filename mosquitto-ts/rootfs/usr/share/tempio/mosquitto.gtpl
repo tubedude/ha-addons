@@ -63,6 +63,17 @@ auth_opt_http_register user
 auth_opt_http_host 127.0.0.1
 auth_opt_http_port 80
 auth_opt_http_getuser_uri /authentication
+# Declared, never consulted — and deleting them is not the tidy-up it looks
+# like. go-auth validates that every URI is present when it CONSTRUCTS the HTTP
+# backend, before `register` narrows what that backend is ever asked. Removing
+# them aborts startup and the broker never comes up:
+#   fatal  Backend register error: couldn't initialize http backend with error
+#          HTTP backend error: missing remote options:  http_aclcheck_uri.
+# That is exactly how the first attempt at this change took MQTT down. With
+# register=user in place the plugin logs "Acl check with backend Files" and asks
+# no superuser question at all.
+auth_opt_http_superuser_uri /superuser
+auth_opt_http_aclcheck_uri /acl
 
 {{ if .customize }}
 include_dir /share/{{ .customize_folder }}
