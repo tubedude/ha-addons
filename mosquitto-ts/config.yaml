@@ -1,5 +1,5 @@
 ---
-version: 7.2.1
+version: 7.2.2
 slug: mosquitto-ts
 name: Mosquitto broker + Tailscale
 description: Mosquitto with Tailscale built in — publishes MQTT over Funnel for clients that cannot run a VPN
